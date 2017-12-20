@@ -1,0 +1,411 @@
+---
+title: "Final Project"
+author: "Gurpreet Singh"
+date: "December 9, 2017"
+output: html_document
+---
+
+
+
+
+### Prediction of House Sale Price
+
+
+
+
+##### Installing required Libraries
+
+```{r}
+suppressWarnings(library(data.table))
+suppressWarnings(library(corrplot))
+suppressWarnings(library(ggplot2))
+suppressWarnings(library(knitr))
+suppressWarnings(library(Hmisc))
+suppressWarnings(library(MASS))
+suppressWarnings(library(forecast))
+```
+
+
+
+#### Data
+
+
+```{r}
+houses <- fread("https://raw.githubusercontent.com/gpsingh12/Data-605-Final-Project/master/train.csv")
+
+names(houses) <- tolower(gsub(" ", "_", names(houses)))
+
+str(houses)
+dim(houses)
+kable(head(houses))
+
+
+```
+
+##### Missing Values and NA's
+
+
+Handling missing values in the berginning to perform analysis smoothly later on. Creating a dataframe for 
+columns of the dataframe houses to remove NA'swith required values(variables). Table out the values connecting each other to analyze NA's and remove or replace with required data. In our dataset garage condition, garage type, garage condition are interlinked, creating pairs to check this and handle the missing values.
+
+```{r}
+df_na<- data.frame(colSums(is.na(houses)))
+names(df_na)<- c( "na")
+
+
+
+
+kable(table(houses$poolqc,houses$poolarea, useNA = 'ifany'))
+
+## 1,453 NA's with poolarea 0. assuming there is no pool, replace with "None"
+houses$poolqc[is.na(houses$poolqc)]<- "None"
+
+## Using similar technique for fire places
+table(houses$fireplacequ,houses$fireplaces,useNA = 'ifany')
+houses$fireplacequ[is.na(houses$fireplacequ)] <- "None"
+
+
+
+
+## missing values for allcolumns related to garage, assuming no garage at all
+#table(houses$garagetype,houses$garageyrblt,useNA = 'ifany')
+
+
+houses$garagetype[is.na(houses$garagetype)] <- "None"
+houses$garageyrblt[is.na(houses$garageyrblt)] <- ""
+houses$garagecond[is.na(houses$garagecond)] <- "None"
+houses$garagefinish[is.na(houses$garagefinish)] <- "None"
+houses$garagequal[is.na(houses$garagequal)] <- "None"
+
+
+
+## another category
+table(is.na(houses$masvnrarea),is.na(houses$masvnrtype))
+houses$masvnrtype[is.na(houses$masvnrtype)] <- "None"
+houses$masvnrarea[is.na(houses$masvnrarea)] <- 0
+
+
+##for basement
+
+table(houses$bsmtfintype1,houses$bsmtfintype2, useNA = 'ifany')
+houses$bsmtfintype1[is.na(houses$bsmtfintype1)] <- "None"
+houses$bsmtfintype2[is.na(houses$bsmtfintype2)] <- "None"
+
+table(houses$bsmtqual,houses$bsmtcond, useNA = 'ifany')
+houses$bsmtqual[is.na(houses$bsmtqual)] <- "None"
+houses$bsmtcond[is.na(houses$bsmtcond)] <- "None"
+houses$bsmtexposure[is.na(houses$bsmtexposure)] <- "None"  
+## we can replace basement exposure  with "No" as it is included in the values, we assume it is different than ##having a basement with no exposure or no basement at all
+
+
+
+### misc. columns
+houses$miscfeature[is.na(houses$miscfeature)] <- "None"
+houses$fence[is.na(houses$fence)] <- "None"
+houses$alley[is.na(houses$alley)] <- "None"
+houses$lotfrontage[is.na(houses$lotfrontage)] <- 0
+houses$electrical[is.na(houses$electrical)] <- "None"
+
+
+
+
+colSums(is.na(houses))
+
+## no misiing values, we can move forward with the analysis.
+```
+
+
+Another required check is to find unique levels of categorical variables.Categories are incorrectly 
+entered as lower case or first letter is capitalized. e.g.  column misc feature has the categoies
+
+"None" "Shed" "Gar2" "Othr" "TenC". We can perform a check at the variables if the data is correct. "Othr" "othr" might corresponds to same category. Random check was performed on few categorical variables. Based on the variables required for analysis, this can be performed on them.
+
+```{r}
+
+## performing a random check at cat. variables.
+
+unique(houses$extercond)
+
+unique(houses$extercond)
+
+unique(houses$miscval)
+
+
+unique(houses$street)
+```
+
+
+
+
+## Selecting Variables for Probability
+
+
+
+Pick one of the quantitative independent variables from the training data set (train.csv) , and define that variable as  X.   Pick SalePrice as the dependent variable, and define it as Y for the next analysis.   
+
+The variable to be selected for the prediction is lot area.Variable X will be the lot area and vriable Y is described as the slae price.
+
+```{r}
+X<- houses$lotarea
+Y<- houses$saleprice
+```
+
+
+Plotting the variables.
+```{r}
+ggplot(data=houses, aes(houses$saleprice)) + geom_histogram(bins=20)
+ggplot(data=houses, aes(houses$lotarea)) + geom_histogram(bins=150) +coord_cartesian(xlim = c(-1000, 50000)) 
+```
+
+##### Probability :
+
+Calculate as a minimum the below probabilities a through c.  Assume the small letter "x" is estimated as the 1st quartile of the X variable, and the small letter "y" is estimated as the 2d quartile of the Y variable.  Interpret the meaning of all probabilities
+
+```{r}
+## first quartile of X
+x <- quantile(X, .25)
+
+x
+
+## second quartile of Y
+y<- quantile(Y,.50)
+y
+```
+
+
+#### Probability
+
+a. P(X>x|Y>y)
+Probability of X greater than first quartile of X (7553.5 ) given that Y is greater than 2nd quartile of Y (163,000).
+
+
+```{r}
+p_X <- nrow(houses[(houses$lotarea > x),])/nrow(houses)
+p_X_and_Y <- nrow(houses[(houses$lotarea > x &houses$saleprice > y),])/nrow(houses)
+p_Y <- nrow(houses[houses$saleprice> y,])/nrow(houses)
+
+p_X_given_Y <- p_X_and_Y/p_Y
+
+p_X_given_Y
+
+```
+
+
+
+
+b. P(X>x & Y>y)
+Probability that X is greater than first qurtile of X (7553.5 ) and Y (sale price) is greater than second quartile of Y (163,000)
+
+```{r}
+p_X_and_Y
+
+```
+
+
+
+
+
+c.P(X<x|Y>y)
+Probability of X less than first quartile of X given Y is greater than second quartile of Y.
+
+
+
+```{r}
+
+p_X_and_Y <- nrow(houses[(houses$lotarea < x &houses$saleprice > y),])/nrow(houses)
+p_Y <- nrow(houses[houses$saleprice> y,])/nrow(houses)
+
+p_X_given_Y <- p_X_and_Y/p_Y
+
+p_X_given_Y
+
+
+
+
+```
+
+
+Does splitting the training data in this fashion make them independent? In other words, does P(X|Y)=P(X)P(Y))?   Check mathematically, and then evaluate by running a Chi Square test for association.
+
+For independence :
+
+P(XY)= P(X)P(Y) or
+
+P(X|Y) = P(X)
+
+```{r}
+p_X_and_Y == p_X * p_Y
+
+
+```
+The variables are independent mathematically. We will perform chi-square test to check the assumption.
+
+##### Chi-Square Test
+
+H~0~ : Sale Price  and Lot Area are independent
+
+H~a~ : Sale Price  and Lot Area are not independent
+
+```{r}
+chisq.test(houses$saleprice,houses$lotarea)
+```
+p-value is very small, we will reject null hypothesis. The variables are dependent. Lot area does effects the sale price of house.
+
+
+
+##### Descriptive nd Inferential Statistics : 
+
+Provide univariate descriptive statistics and appropriate plots for both variables.   Provide a scatterplot of X and Y.  Transform both variables simultaneously using Box-Cox transformations.  You might have to research this.
+
+
+```{r}
+describe(houses$saleprice)
+describe(houses$overallqual)
+
+summary(houses$saleprice)
+summary(houses$lotarea)
+
+## transform using boxcox transformation for normality
+
+lambda_X = BoxCox.lambda(X)
+trans_X<-  BoxCox(X,lambda_X)
+
+
+
+
+lambda_Y<- BoxCox.lambda(Y)
+trans_Y <- BoxCox(Y,lambda_Y)
+trans_df <- data.frame(trans_X, trans_Y)
+
+hist(trans_X)
+ggplot(data=trans_df, aes(trans_df$trans_X)) + geom_histogram(bins=30)
+ggplot(data=trans_df, aes(trans_df$trans_Y)) + geom_histogram(bins=30)
+
+
+## 
+
+```
+
+
+Link: 
+[boxcox](https://stackoverflow.com/questions/26617587/finding-optimal-lambda-for-box-cox-transform-in-r)
+
+##### Linear Algebra and Correlation :
+
+Using at least three untransformed variables, build a correlation matrix.  Invert your correlation matrix. (This is known as the precision matrix and contains variance inflation factors on the diagonal.) Multiply the correlation matrix by the precision matrix, and then multiply the precision matrix by the correlation matrix
+
+```{r}
+houses1 <- houses[,c("lotarea", "overallqual", "saleprice")]
+cor_matrix<-cor(houses1)
+corrplot(cor_matrix, method = "square")
+corrplot(cor_matrix, method = "number")
+prec_matrix <- round(solve(cor_matrix),1)
+prec_matrix
+prec_cor<- round(cor_matrix%*%prec_matrix,1)
+prec_cor
+
+```
+
+
+
+##### Calculus-Based Probability & Statistics. 
+
+Many times, it makes sense to fit a closed form distribution to data.  For your non-transformed independent variable, location shift (if necessary)  it so that the minimum value is above zero.  Then load the MASS package and run fitdistr to fit a density function of your choice.  (See  https://stat.ethz.ch/R-manual/R-devel/library/MASS/html/fitdistr.html ).  Find the optimal value of the parameters for this distribution, and then take 1000 samples from this distribution (e.g., rexp(1000, ???) for an exponential).  Plot a histogram and compare it with a histogram of your non-transformed original variable
+
+```{r}
+min(houses$lotarea)
+
+## minimum value above zero, no location shift required
+
+
+houses_fit <- fitdistr(houses$lotarea, 'normal')
+mean_fit <- houses_fit$estimate[1]
+sd_fit <- houses_fit$estimate[2]
+mean_fit
+sd_fit
+
+
+houses_sample <-rnorm(1000,mean_fit, sd_fit)
+
+
+hist(houses_sample)
+hist(houses$lotarea)
+
+
+##nearly normal compared to original
+```
+
+
+
+
+
+##### Modeling:
+Build some type of regression model and submit your model to the competition board.  Provide your complete model summary and results with analysis.  Report your Kaggle.com  user name and score.
+
+Multiple Regression model for prediction: 14 variabless were selected from the dataset for model. In order to avoid noise, the variable influencing ( in general) the saleprice of houses were selected.
+
+```{r}
+houses_cols <- houses[,c("saleprice", "mssubclass", "lotarea", "lotfrontage", "overallcond",                                       "overallqual", "grlivarea", "mosold", "yearbuilt", "yearremodadd",
+                         "bedroomabvgr", "fullbath", "garagearea", "garagecars", "poolarea")]
+
+
+```
+
+
+
+```{r}
+model <- lm(saleprice ~ .,data=houses_cols)
+
+summary(model)
+```
+
+
+R-squared value is 0.78. We will remove the variables with high p-value and update the model using backward elimination.
+
+```{r}
+ggplot(model, aes(x = .fitted, y = .resid)) + geom_point() +geom_hline(yintercept=0)+
+  expand_limits(y = c(0, -800))
+
+
+
+qqnorm(model$residuals)
+qqline(model$residuals)
+```
+
+
+
+
+```{r}
+model <-update(model, .~. -mosold-lotfrontage-fullbath-poolarea-yearremodadd-garagearea, data = houses_cols)
+
+summary(model)
+```
+
+
+
+
+
+
+```{r}
+ggplot(model, aes(x = .fitted, y = .resid)) + geom_point() +geom_hline(yintercept=0)+
+  expand_limits(y = c(0, -800))
+```
+
+
+```{r}
+qqnorm(model$residuals)
+qqline(model$residuals)
+```
+
+
+Udating the model with backward elimination by removing the variables with high p-value dows not provide improvement to the model. R-squared is still 0.78.Residuals does not follow any pattern, they are clusterd around the line, which explains fit of the model. A closer look at qqplot reveals the normality with only a few outliers in the end.
+
+
+
+###### Refrences :
+
+https://cran.r-project.org/web/packages/corrplot/vignettes/corrplot-intro.html
+
+https://stackoverflow.com/questions/26617587/finding-optimal-lambda-for-box-cox-transform-in-r
+
+http://docs.statwing.com/interpreting-residual-plots-to-improve-your-regression/
